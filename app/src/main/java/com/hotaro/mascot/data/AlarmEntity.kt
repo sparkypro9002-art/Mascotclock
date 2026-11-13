@@ -5,8 +5,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "alarms")
 data class AlarmEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Int = 0,
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val timeHour: Int,
     val timeMinute: Int,
     val daysOfWeek: String,
@@ -19,5 +18,7 @@ data class AlarmEntity(
     val qrCodeName: String = "",
     val cameraObject: String = "",
     val mathOperations: String = "Addition,Subtraction",
-    val mathDifficulty: String = "Easy"
+    val mathDifficulty: String = "Easy",
+    val volumePercent: Int = 100,
+    val lockVolumeWhileRinging: Boolean = true
 )

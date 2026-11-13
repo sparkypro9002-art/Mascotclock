@@ -389,16 +389,7 @@ fun ColumnScope.QRChallengeView(qrCodeData: String, qrCodeName: String, zenModeE
     
     Spacer(modifier = Modifier.height(24.dp))
     
-    Button(
-        onClick = onStopAlarm,
-        modifier = Modifier.fillMaxWidth().height(64.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = primaryContainerDark, contentColor = onPrimaryContainerDark),
-        shape = RoundedCornerShape(32.dp)
-    ) {
-        Icon(Icons.Outlined.CameraAlt, contentDescription = null)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Capture & Stop", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-    }
+    Text("Scan your saved QR code to stop the alarm", color = onSurfaceVariantDark, fontSize = 15.sp, fontWeight = FontWeight.Medium)
     
     if (!zenModeEnabled) {
         Spacer(modifier = Modifier.height(16.dp))

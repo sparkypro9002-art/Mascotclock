@@ -21,6 +21,7 @@ import com.hotaro.mascot.MainActivity
 class AlarmService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
+    private var volumeGuard: AlarmVolumeGuard? = null
 
     companion object {
         var isRinging = false
@@ -33,6 +34,7 @@ class AlarmService : Service() {
         var currentVibrationEnabled = true
         var currentMathOperations = ""
         var currentMathDifficulty = ""
+        var currentLockVolume = true
     }
 
     override fun onCreate() {
@@ -62,6 +64,9 @@ class AlarmService : Service() {
         val cameraObject = intent?.getStringExtra("CAMERA_OBJECT") ?: ""
         val mathOperations = intent?.getStringExtra("MATH_OPERATIONS") ?: ""
         val mathDifficulty = intent?.getStringExtra("MATH_DIFFICULTY") ?: ""
+        val volumePercent = intent?.getIntExtra("VOLUME_PERCENT", 100) ?: 100
+        val lockVolume = intent?.getBooleanExtra("LOCK_VOLUME", true) ?: true
+        currentLockVolume = lockVolume
 
         isRinging = true
         currentAlarmId = alarmId
@@ -108,6 +113,8 @@ class AlarmService : Service() {
 
         startForeground(1001, notification)
 
+        volumeGuard?.stop()
+        volumeGuard = AlarmVolumeGuard(this).apply { start(volumePercent, lockVolume) }
         playRingtone(soundUriStr)
         if (vibrationEnabled) {
             startVibration()
@@ -165,6 +172,8 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
+        volumeGuard?.stop()
+        volumeGuard = null
         mediaPlayer?.stop()
         mediaPlayer?.release()
         vibrator?.cancel()

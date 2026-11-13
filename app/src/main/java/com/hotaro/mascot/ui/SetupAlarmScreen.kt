@@ -57,6 +57,8 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
     var soundUri by remember { mutableStateOf(alarm?.soundUri ?: "") }
     var soundName by remember { mutableStateOf(alarm?.soundName ?: "Default") }
     var vibrationEnabled by remember { mutableStateOf(alarm?.vibrationEnabled ?: true) }
+    var volumePercent by remember { mutableIntStateOf(alarm?.volumePercent ?: 100) }
+    var lockVolumeWhileRinging by remember { mutableStateOf(alarm?.lockVolumeWhileRinging ?: true) }
     var showRepeatDialog by remember { mutableStateOf(false) }
     var qrCodeData by remember { mutableStateOf(alarm?.qrCodeData ?: "") }
     var qrCodeName by remember { mutableStateOf(alarm?.qrCodeName ?: "") }
@@ -141,7 +143,9 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
                                 qrCodeName = if (selectedChallenge == "QR Code") qrCodeName else "",
                                 cameraObject = if (selectedChallenge == "Camera") cameraObject else "",
                                 mathOperations = if (selectedChallenge == "Math") mathOperations else "Addition,Subtraction",
-                                mathDifficulty = if (selectedChallenge == "Math") mathDifficulty else "Easy"
+                                mathDifficulty = if (selectedChallenge == "Math") mathDifficulty else "Easy",
+                                volumePercent = volumePercent,
+                                lockVolumeWhileRinging = lockVolumeWhileRinging
                             )
                             if (alarm == null) {
                                 viewModel?.insert(newAlarm)
@@ -348,6 +352,8 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
             }
             Spacer(modifier = Modifier.height(8.dp))
             SettingsRowSwitch(icon = Icons.Outlined.Vibration, title = "Vibration", subtitle = "Heartbeat pattern", checked = vibrationEnabled, onCheckedChange = { vibrationEnabled = it })
+            Spacer(modifier = Modifier.height(8.dp))
+            AlarmVolumeControls(volumePercent, { volumePercent = it }, lockVolumeWhileRinging, { lockVolumeWhileRinging = it })
             
             Spacer(modifier = Modifier.height(32.dp))
             

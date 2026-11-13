@@ -68,4 +68,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (AlarmService.isRinging && AlarmService.currentLockVolume &&
+            (event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_MUTE)) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
 }
