@@ -163,3 +163,22 @@ private fun processImageForLabeling(
         imageProxy.close()
     }
 }
+
+// YOLOv8-Nano INT8 TFLite Local Vision Engine Integration
+package com.hotaro.mascot.ui.challenges
+
+import android.content.Context
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.io.FileInputStream
+
+fun loadYoloModel(context: Context, modelName: String = "yolov8n_int8.tflite"): ByteBuffer? {
+    return try {
+        val fileDescriptor = context.assets.openFd(modelName)
+        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+        val fileChannel = inputStream.channel
+        fileChannel.map(FileChannel.MapMode.READ_ONLY, fileDescriptor.startOffset, fileDescriptor.declaredLength)
+    } catch (e: Exception) {
+        null
+    }
+}
