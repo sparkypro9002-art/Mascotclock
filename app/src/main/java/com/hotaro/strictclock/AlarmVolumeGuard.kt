@@ -34,9 +34,6 @@ class AlarmVolumeGuard(private val context: Context) {
         }
     }
 
-    /**
-     * Call right BEFORE MediaPlayer or Ringtone starts playing.
-     */
     fun start(volumePercent: Int, lockVolumeWhileRinging: Boolean) {
         isLocked = lockVolumeWhileRinging
         isActive = true
@@ -50,7 +47,6 @@ class AlarmVolumeGuard(private val context: Context) {
             .roundToInt()
             .coerceIn(0, maxVol)
 
-        // Force system alarm stream to the preset percentage immediately
         audioManager.setStreamVolume(AudioManager.STREAM_ALARM, targetVolume, 0)
 
         if (isLocked) {
@@ -67,7 +63,6 @@ class AlarmVolumeGuard(private val context: Context) {
     }
 
     private fun registerVolumeGuards() {
-        // Layer 1: System settings observer
         settingsObserver = object : ContentObserver(mainHandler) {
             override fun onChange(selfChange: Boolean) {
                 enforceMinimumVolume()
@@ -79,7 +74,6 @@ class AlarmVolumeGuard(private val context: Context) {
             settingsObserver!!
         )
 
-        // Layer 2: Instant volume-change broadcast interception
         volumeReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
@@ -102,9 +96,6 @@ class AlarmVolumeGuard(private val context: Context) {
         }
     }
 
-    /**
-     * Call when the alarm is dismissed / challenge is solved.
-     */
     fun stop() {
         isActive = false
         mainHandler.removeCallbacks(watchdogRunnable)
@@ -119,7 +110,6 @@ class AlarmVolumeGuard(private val context: Context) {
         }
         volumeReceiver = null
 
-        // Restore original alarm volume after dismissal
         if (previousVolume != -1) {
             audioManager.setStreamVolume(AudioManager.STREAM_ALARM, previousVolume, 0)
             previousVolume = -1
