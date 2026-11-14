@@ -96,3 +96,21 @@ dependencies {
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 }
+
+
+android {
+    signingConfigs {
+        maybeCreate("release").apply {
+            val debugCfg = getByName("debug")
+            storeFile = debugCfg.storeFile
+            storePassword = debugCfg.storePassword
+            keyAlias = debugCfg.keyAlias
+            keyPassword = debugCfg.keyPassword
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
