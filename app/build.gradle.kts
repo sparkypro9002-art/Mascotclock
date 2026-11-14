@@ -92,7 +92,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.0")
     
     // ML Kit Image Labeling (Unbundled)
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
     
     // DataStore Preferences
     implementation("androidx.datastore:datastore-preferences:1.0.0")

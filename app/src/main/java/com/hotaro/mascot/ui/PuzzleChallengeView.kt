@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +31,7 @@ fun ColumnScope.PuzzleChallengeView(zenModeEnabled: Boolean, onSnoozeAlarm: () -
     val prefs = context.getSharedPreferences("strict_clock_prefs", Context.MODE_PRIVATE)
 
     val puzzleType = prefs.getString("puzzle_type", "Memory Match") ?: "Memory Match"
-    val puzzleCount = prefs.getInt("puzzle_count", 1)
+    val puzzleCount = prefs.getInt("puzzle_count", 1).coerceAtLeast(1)
 
     var puzzlesSolved by remember { mutableIntStateOf(0) }
     var roundSolved by remember(puzzlesSolved) { mutableStateOf(false) }
@@ -49,9 +50,14 @@ fun ColumnScope.PuzzleChallengeView(zenModeEnabled: Boolean, onSnoozeAlarm: () -
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(puzzleType.uppercase(), color = primaryDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Puzzles solved: $puzzlesSolved / $puzzleCount", color = onSurfaceDark, fontSize = 16.sp)
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = if (roundSolved) "Puzzle Completed! Tap Done below." else "Puzzles solved: $puzzlesSolved / $puzzleCount",
+                color = if (roundSolved) Color(0xFF4CAF50) else onSurfaceDark,
+                fontSize = 16.sp,
+                fontWeight = if (roundSolved) FontWeight.Bold else FontWeight.Normal
+            )
+            Spacer(modifier = Modifier.height(16.dp))
 
             Box(
                 modifier = Modifier
@@ -71,10 +77,10 @@ fun ColumnScope.PuzzleChallengeView(zenModeEnabled: Boolean, onSnoozeAlarm: () -
                         "Color Trick" -> ColorTrickGame(onSolved = onPuzzleCompleted)
                         else -> {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("$puzzleType is ready!", color = onSurfaceDark)
+                                Text("$puzzleType ready", color = onSurfaceDark)
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Button(onClick = onPuzzleCompleted) {
-                                    Text("Complete Puzzle")
+                                    Text("Finish Puzzle")
                                 }
                             }
                         }
@@ -82,46 +88,55 @@ fun ColumnScope.PuzzleChallengeView(zenModeEnabled: Boolean, onSnoozeAlarm: () -
                 }
             }
 
-            if (roundSolved) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        if (puzzlesSolved + 1 >= puzzleCount) {
-                            onStopAlarm()
-                        } else {
-                            puzzlesSolved++
-                        }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (puzzlesSolved + 1 >= puzzleCount) {
+                        onStopAlarm()
+                    } else {
+                        puzzlesSolved++
+                    }
+                },
+                enabled = roundSolved,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50),
+                    contentColor = Color.White,
+                    disabledContainerColor = surfaceVariantDark.copy(alpha = 0.5f),
+                    disabledContentColor = onSurfaceVariantDark.copy(alpha = 0.6f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = if (roundSolved) Icons.Default.Check else Icons.Default.Lock,
+                    contentDescription = "Done"
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = when {
+                        !roundSolved -> "Solve Puzzle to Unlock Done"
+                        puzzlesSolved + 1 >= puzzleCount -> "Done"
+                        else -> "Next Puzzle"
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF4CAF50),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = "Done")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (puzzlesSolved + 1 >= puzzleCount) "Done" else "Next Puzzle",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             if (!zenModeEnabled && !roundSolved) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = onSnoozeAlarm,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = surfaceVariantDark),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Snooze (+5 min)", color = onSurfaceVariantDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Snooze (+5 min)", color = onSurfaceVariantDark, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -144,11 +159,13 @@ fun MemoryMatchGame(onSolved: () -> Unit) {
             if (deck[first] == deck[second]) {
                 matchedIndices.add(first)
                 matchedIndices.add(second)
-                flippedIndices.clear()
                 if (matchedIndices.size == deck.size) {
-                    delay(300)
+                    flippedIndices.clear()
+                    isProcessing = false
                     onSolved()
+                    return@LaunchedEffect
                 }
+                flippedIndices.clear()
             } else {
                 delay(700)
                 flippedIndices.clear()
@@ -330,11 +347,11 @@ fun ColorTrickGame(onSolved: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Tap the INK COLOR, not the word", color = onSurfaceDark, fontSize = 16.sp)
         Text("Streak: $score / $requiredScore", color = onSurfaceVariantDark, fontSize = 14.sp)
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         Card(modifier = Modifier.padding(16.dp), colors = CardDefaults.cardColors(containerColor = surfaceVariantDark)) {
             Text(targetWord.first, color = targetColor.second, fontSize = 48.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(32.dp))
         }
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
         val shuffledOptions = remember(targetWord) { colorPairs.shuffled() }
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),

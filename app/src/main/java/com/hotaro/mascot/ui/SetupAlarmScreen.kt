@@ -121,10 +121,7 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
                                 showStrictModeDialog = true
                                 return@Button
                             }
-                            if (selectedChallenge == "Camera" && cameraObject.isEmpty()) {
-                                showStrictModeDialog = true
-                                return@Button
-                            }
+                            
                             if (selectedChallenge == "Math" && mathOperations.isEmpty()) {
                                 showStrictModeDialog = true
                                 return@Button
@@ -397,22 +394,7 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
             Spacer(modifier = Modifier.height(16.dp))
             
             Row(modifier = Modifier.fillMaxWidth()) {
-                TaskCard(
-                    icon = Icons.Outlined.CameraAlt, 
-                    title = "Camera", 
-                    subtitle = if (selectedChallenge == "Camera") {
-                        if (cameraObject.isNotEmpty()) "Target: $cameraObject" else "Tap to setup Object"
-                    } else "Take a picture", 
-                    modifier = Modifier.weight(1f).clickable {
-                        if (selectedChallenge == "Camera") {
-                            showCameraObjectDialog = true
-                        } else {
-                            selectedChallenge = "Camera"
-                        }
-                    },
-                    isSelected = selectedChallenge == "Camera"
-                )
-                Spacer(modifier = Modifier.width(16.dp))
+                
                 TaskCard(
                     icon = Icons.Outlined.Extension, 
                     title = "Puzzle", 
@@ -547,37 +529,7 @@ fun SetupAlarmScreen(viewModel: AlarmViewModel? = null, alarm: AlarmEntity? = nu
             )
         }
         
-        if (showCameraObjectDialog) {
-            AlertDialog(
-                onDismissRequest = { showCameraObjectDialog = false },
-                title = { Text("Select Camera Target", color = onSurfaceDark) },
-                text = {
-                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        val allTargets = listOf(
-                            "Sink", "Chair", "Mug", "Keyboard", "Shoe", "Toothbrush", 
-                            "Laptop", "Television", "Bottle", "Cup", "Spoon", "Fork", 
-                            "Plate", "Bed", "Door", "Window", "Book", "Pen", "Paper", "Poster",
-                            "Grass", "Cat", "Dog", "Apple", "Banana", "Mouse"
-                        )
-                        allTargets.forEach { target ->
-                            Row(modifier = Modifier.fillMaxWidth().clickable { 
-                                cameraObject = target
-                                showCameraObjectDialog = false
-                            }.padding(16.dp)) {
-                                Text(target, color = onSurfaceDark, fontSize = 16.sp)
-                            }
-                            HorizontalDivider(color = outlineDark.copy(alpha = 0.5f))
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showCameraObjectDialog = false }) {
-                        Text("Close", color = primaryDark)
-                    }
-                },
-                containerColor = surfaceContainerHighDark
-            )
-        }
+        
     }
 }
 

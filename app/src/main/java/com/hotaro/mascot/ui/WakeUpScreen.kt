@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hotaro.mascot.ui.challenges.MathChallenge
 import com.hotaro.mascot.ui.challenges.QRScannerView
-import com.hotaro.mascot.ui.challenges.CameraChallengeView
 import com.hotaro.mascot.ui.theme.*
 import java.util.Calendar
 import android.content.Context
@@ -172,7 +171,7 @@ fun WakeUpScreen(
                             "Math" -> MathChallengeView(mathOperations, mathDifficulty, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                             "QR Code" -> QRChallengeView(qrCodeData, qrCodeName, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                             "QR" -> QRChallengeView(qrCodeData, qrCodeName, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
-                            "Camera" -> CameraChallengeViewWrapper(cameraObject, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
+                            "Camera" -> PuzzleChallengeView(zenModeEnabled = zenModeEnabled, onSnoozeAlarm = onSnoozeAlarm, onStopAlarm = onStopAlarm)
                             "Puzzle" -> PuzzleChallengeView(zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                             else -> RegularWakeUpView(zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                         }
@@ -198,7 +197,7 @@ fun WakeUpScreen(
                         "Math" -> MathChallengeView(mathOperations, mathDifficulty, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                         "QR Code" -> QRChallengeView(qrCodeData, qrCodeName, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                         "QR" -> QRChallengeView(qrCodeData, qrCodeName, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
-                        "Camera" -> CameraChallengeViewWrapper(cameraObject, zenModeEnabled, onSnoozeAlarm, onStopAlarm)
+                        "Camera" -> PuzzleChallengeView(zenModeEnabled = zenModeEnabled, onSnoozeAlarm = onSnoozeAlarm, onStopAlarm = onStopAlarm)
                         "Puzzle" -> PuzzleChallengeView(zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                         else -> RegularWakeUpView(zenModeEnabled, onSnoozeAlarm, onStopAlarm)
                     }
@@ -409,69 +408,7 @@ fun ColumnScope.QRChallengeView(qrCodeData: String, qrCodeName: String, zenModeE
     Spacer(modifier = Modifier.height(32.dp))
 }
 
-@Composable
-fun ColumnScope.CameraChallengeViewWrapper(cameraObject: String, zenModeEnabled: Boolean, onSnoozeAlarm: () -> Unit, onStopAlarm: () -> Unit) {
-    var showCamera by remember { mutableStateOf(false) }
-    Card(
-        modifier = Modifier.fillMaxWidth().weight(1f),
-        shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(containerColor = surfaceContainerHighDark)
-    ) {
-        Column(modifier = Modifier.padding(20.dp).fillMaxSize()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = Color(0xFF4A4458), shape = CircleShape, modifier = Modifier.size(56.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = onSurfaceDark)
-                    }
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text("Camera Challenge", fontSize = 22.sp, fontWeight = FontWeight.Medium, color = onSurfaceDark)
-                    Text("Take a picture of: $cameraObject", color = onSurfaceVariantDark, fontSize = 14.sp)
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(20.dp))
-            
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black, RoundedCornerShape(24.dp))
-                    .clip(RoundedCornerShape(24.dp))
-            ) {
-                if (showCamera) {
-                    CameraChallengeView(
-                        targetObject = cameraObject,
-                        onObjectDetected = onStopAlarm
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Button(onClick = { showCamera = true }) {
-                            Text("Start Camera")
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    if (!zenModeEnabled) {
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Button(
-            onClick = onSnoozeAlarm,
-            modifier = Modifier.fillMaxWidth().height(64.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = surfaceContainerHighDark, contentColor = onSurfaceDark),
-            shape = RoundedCornerShape(32.dp)
-        ) {
-            Icon(Icons.Outlined.Snooze, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Snooze (5:00)", fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        }
-    }
-    
-    Spacer(modifier = Modifier.height(32.dp))
-}
+
 
 @Composable
 fun RegularWakeUpView(zenModeEnabled: Boolean, onSnoozeAlarm: () -> Unit, onStopAlarm: () -> Unit) {
