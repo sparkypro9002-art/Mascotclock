@@ -50,13 +50,21 @@ class YoloV8Detector(context: Context) {
     private val interpreter: Interpreter
     private val inputSize: Int
     private val isInputQuantized: Boolean
+    private val isInputSignedInt8: Boolean
     private val inputScale: Float
     private val inputZeroPoint: Int
     private val numChannels: Int
     private val numAnchors: Int
     private val isOutputQuantized: Boolean
+    private val isOutputUint8: Boolean
     private val outputScale: Float
     private val outputZeroPoint: Int
+
+    private val pixels: IntArray
+    private val inputBuffer: ByteBuffer
+    private val outBytes: ByteBuffer?
+    private val outRaw: ByteArray?
+    private val outFloat: Array<Array<FloatArray>>?
 
     private val cocoLabels = listOf(
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
@@ -76,11 +84,16 @@ class YoloV8Detector(context: Context) {
         val modelBuffer = FileInputStream(afd.fileDescriptor).channel.map(
             FileChannel.MapMode.READ_ONLY, afd.startOffset, afd.declaredLength
         )
-        interpreter = Interpreter(modelBuffer, Interpreter.Options().apply { setNumThreads(4) })
+        val options = Interpreter.Options().apply {
+            setNumThreads(4)
+            setUseXNNPACK(true)
+        }
+        interpreter = Interpreter(modelBuffer, options)
 
         val inTensor = interpreter.getInputTensor(0)
         inputSize = inTensor.shape()[1]
         isInputQuantized = inTensor.dataType() != DataType.FLOAT32
+        isInputSignedInt8 = inTensor.dataType() == DataType.INT8
         inputScale = inTensor.quantizationParams().scale.takeIf { it > 0f } ?: (1f / 255f)
         inputZeroPoint = inTensor.quantizationParams().zeroPoint
 
@@ -88,105 +101,137 @@ class YoloV8Detector(context: Context) {
         numChannels = outTensor.shape()[1]
         numAnchors = outTensor.shape()[2]
         isOutputQuantized = outTensor.dataType() != DataType.FLOAT32
+        isOutputUint8 = outTensor.dataType() == DataType.UINT8
         outputScale = outTensor.quantizationParams().scale.takeIf { it > 0f } ?: 1f
         outputZeroPoint = outTensor.quantizationParams().zeroPoint
-    }
 
-    fun detect(bitmap: Bitmap): YoloDetection? {
-        val resized = Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, true)
-        val pixels = IntArray(inputSize * inputSize)
-        resized.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
-
-        val inputBuffer = if (isInputQuantized) {
-            ByteBuffer.allocateDirect(inputSize * inputSize * 3).order(ByteOrder.nativeOrder()).apply {
-                for (px in pixels) {
-                    val r = ((px shr 16) and 0xFF) / 255f
-                    val g = ((px shr 8) and 0xFF) / 255f
-                    val b = (px and 0xFF) / 255f
-                    put(((r / inputScale) + inputZeroPoint).toInt().coerceIn(-128, 255).toByte())
-                    put(((g / inputScale) + inputZeroPoint).toInt().coerceIn(-128, 255).toByte())
-                    put(((b / inputScale) + inputZeroPoint).toInt().coerceIn(-128, 255).toByte())
-                }
-                rewind()
-            }
-        } else {
-            ByteBuffer.allocateDirect(4 * inputSize * inputSize * 3).order(ByteOrder.nativeOrder()).apply {
-                for (px in pixels) {
-                    putFloat(((px shr 16) and 0xFF) / 255f)
-                    putFloat(((px shr 8) and 0xFF) / 255f)
-                    putFloat((px and 0xFF) / 255f)
-                }
-                rewind()
-            }
-        }
-
-        val numClasses = min(cocoLabels.size, numChannels - 4)
-        var bestConf = 0.45f
-        var bestClass = -1
-        var bestBox = RectF()
+        pixels = IntArray(inputSize * inputSize)
+        val bytesPerChannel = if (isInputQuantized) 1 else 4
+        inputBuffer = ByteBuffer.allocateDirect(bytesPerChannel * inputSize * inputSize * 3)
+            .order(ByteOrder.nativeOrder())
 
         if (isOutputQuantized) {
-            val outBytes = ByteBuffer.allocateDirect(numChannels * numAnchors).order(ByteOrder.nativeOrder())
-            interpreter.run(inputBuffer, outBytes)
-            outBytes.rewind()
-            val raw = ByteArray(numChannels * numAnchors)
-            outBytes.get(raw)
-            val isUint8 = interpreter.getOutputTensor(0).dataType() == DataType.UINT8
+            outBytes = ByteBuffer.allocateDirect(numChannels * numAnchors).order(ByteOrder.nativeOrder())
+            outRaw = ByteArray(numChannels * numAnchors)
+            outFloat = null
+        } else {
+            outBytes = null
+            outRaw = null
+            outFloat = Array(1) { Array(numChannels) { FloatArray(numAnchors) } }
+        }
+    }
 
-            fun readVal(c: Int, a: Int): Float {
-                val b = raw[c * numAnchors + a]
-                val v = if (isUint8) (b.toInt() and 0xFF) else b.toInt()
-                return (v - outputZeroPoint) * outputScale
-            }
+    @Synchronized
+    fun detect(bitmap: Bitmap): YoloDetection? {
+        val scaled = if (bitmap.width == inputSize && bitmap.height == inputSize) {
+            bitmap
+        } else {
+            Bitmap.createScaledBitmap(bitmap, inputSize, inputSize, false)
+        }
+        scaled.getPixels(pixels, 0, inputSize, 0, 0, inputSize, inputSize)
+        inputBuffer.rewind()
 
-            for (a in 0 until numAnchors) {
-                for (c in 0 until numClasses) {
-                    val conf = readVal(4 + c, a)
-                    if (conf > bestConf) {
-                        bestConf = conf
-                        bestClass = c
-                        val cx = readVal(0, a)
-                        val cy = readVal(1, a)
-                        val w = readVal(2, a)
-                        val h = readVal(3, a)
-                        val scaleNorm = if (cx > 2f) 1f / inputSize else 1f
-                        bestBox = RectF(
-                            max(0f, (cx - w / 2f) * scaleNorm),
-                            max(0f, (cy - h / 2f) * scaleNorm),
-                            min(1f, (cx + w / 2f) * scaleNorm),
-                            min(1f, (cy + h / 2f) * scaleNorm)
-                        )
-                    }
-                }
+        if (isInputQuantized) {
+            val minQ = if (isInputSignedInt8) -128 else 0
+            val maxQ = if (isInputSignedInt8) 127 else 255
+            val invScale = 1f / (255f * inputScale)
+            for (px in pixels) {
+                val r = (px shr 16) and 0xFF
+                val g = (px shr 8) and 0xFF
+                val b = px and 0xFF
+                inputBuffer.put(((r * invScale) + inputZeroPoint).toInt().coerceIn(minQ, maxQ).toByte())
+                inputBuffer.put(((g * invScale) + inputZeroPoint).toInt().coerceIn(minQ, maxQ).toByte())
+                inputBuffer.put(((b * invScale) + inputZeroPoint).toInt().coerceIn(minQ, maxQ).toByte())
             }
         } else {
-            val outArr = Array(1) { Array(numChannels) { FloatArray(numAnchors) } }
-            interpreter.run(inputBuffer, outArr)
-            val data = outArr[0]
-            for (a in 0 until numAnchors) {
-                for (c in 0 until numClasses) {
-                    val conf = data[4 + c][a]
-                    if (conf > bestConf) {
-                        bestConf = conf
+            val norm = 1f / 255f
+            for (px in pixels) {
+                inputBuffer.putFloat(((px shr 16) and 0xFF) * norm)
+                inputBuffer.putFloat(((px shr 8) and 0xFF) * norm)
+                inputBuffer.putFloat((px and 0xFF) * norm)
+            }
+        }
+        inputBuffer.rewind()
+
+        val numClasses = min(cocoLabels.size, numChannels - 4)
+        var bestClass = -1
+        var bestAnchor = -1
+        var bestConf = 0.25f
+
+        if (isOutputQuantized && outBytes != null && outRaw != null) {
+            outBytes.rewind()
+            interpreter.run(inputBuffer, outBytes)
+            outBytes.rewind()
+            outBytes.get(outRaw)
+
+            var bestRaw = ((bestConf / outputScale) + outputZeroPoint).toInt()
+            for (c in 0 until numClasses) {
+                val rowOffset = (4 + c) * numAnchors
+                for (a in 0 until numAnchors) {
+                    val b = outRaw[rowOffset + a]
+                    val v = if (isOutputUint8) (b.toInt() and 0xFF) else b.toInt()
+                    if (v > bestRaw) {
+                        bestRaw = v
                         bestClass = c
-                        val cx = data[0][a]
-                        val cy = data[1][a]
-                        val w = data[2][a]
-                        val h = data[3][a]
-                        val scaleNorm = if (cx > 2f) 1f / inputSize else 1f
-                        bestBox = RectF(
-                            max(0f, (cx - w / 2f) * scaleNorm),
-                            max(0f, (cy - h / 2f) * scaleNorm),
-                            min(1f, (cx + w / 2f) * scaleNorm),
-                            min(1f, (cy + h / 2f) * scaleNorm)
-                        )
+                        bestAnchor = a
                     }
                 }
             }
-        }
+            if (bestClass == -1) return null
+            bestConf = (bestRaw - outputZeroPoint) * outputScale
 
-        if (bestClass == -1) return null
-        return YoloDetection(cocoLabels[bestClass], bestConf, bestBox)
+            fun readCoord(ch: Int): Float {
+                val b = outRaw[ch * numAnchors + bestAnchor]
+                val v = if (isOutputUint8) (b.toInt() and 0xFF) else b.toInt()
+                return (v - outputZeroPoint) * outputScale
+            }
+            val cx = readCoord(0)
+            val cy = readCoord(1)
+            val w = readCoord(2)
+            val h = readCoord(3)
+            val scaleNorm = if (cx > 2f) 1f / inputSize else 1f
+            return YoloDetection(
+                cocoLabels[bestClass],
+                bestConf.coerceIn(0f, 1f),
+                RectF(
+                    max(0f, (cx - w / 2f) * scaleNorm),
+                    max(0f, (cy - h / 2f) * scaleNorm),
+                    min(1f, (cx + w / 2f) * scaleNorm),
+                    min(1f, (cy + h / 2f) * scaleNorm)
+                )
+            )
+        } else if (outFloat != null) {
+            interpreter.run(inputBuffer, outFloat)
+            val data = outFloat[0]
+            for (c in 0 until numClasses) {
+                val row = data[4 + c]
+                for (a in 0 until numAnchors) {
+                    val conf = row[a]
+                    if (conf > bestConf) {
+                        bestConf = conf
+                        bestClass = c
+                        bestAnchor = a
+                    }
+                }
+            }
+            if (bestClass == -1) return null
+            val cx = data[0][bestAnchor]
+            val cy = data[1][bestAnchor]
+            val w = data[2][bestAnchor]
+            val h = data[3][bestAnchor]
+            val scaleNorm = if (cx > 2f) 1f / inputSize else 1f
+            return YoloDetection(
+                cocoLabels[bestClass],
+                bestConf.coerceIn(0f, 1f),
+                RectF(
+                    max(0f, (cx - w / 2f) * scaleNorm),
+                    max(0f, (cy - h / 2f) * scaleNorm),
+                    min(1f, (cx + w / 2f) * scaleNorm),
+                    min(1f, (cy + h / 2f) * scaleNorm)
+                )
+            )
+        }
+        return null
     }
 
     fun close() {
@@ -212,11 +257,14 @@ fun CameraChallengeView(targetObject: String, onObjectDetected: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
-    val detector = remember { runCatching { YoloV8Detector(context) }.getOrNull() }
+    val detectorResult = remember { runCatching { YoloV8Detector(context) } }
+    val detector = detectorResult.getOrNull()
+    val initError = detectorResult.exceptionOrNull()?.message
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
 
     val currentMatch = remember { mutableStateOf<YoloDetection?>(null) }
     var triggered by remember { mutableStateOf(false) }
+    var streak by remember { mutableIntStateOf(0) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -237,17 +285,21 @@ fun CameraChallengeView(targetObject: String, onObjectDetected: () -> Unit) {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
                     val imageAnalysis = ImageAnalysis.Builder()
-                        .setTargetResolution(Size(640, 480))
+                        .setTargetResolution(Size(320, 320))
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
                         .also {
                             it.setAnalyzer(analysisExecutor) { imageProxy ->
                                 processYoloFrame(detector, imageProxy, targetObject, { det ->
                                     currentMatch.value = det
-                                }, {
-                                    if (!triggered) {
-                                        triggered = true
-                                        mainExecutor.execute { onObjectDetected() }
+                                    if (det != null && matchesTarget(det.label, targetObject)) {
+                                        streak++
+                                        if (!triggered && (det.confidence >= 0.45f || (det.confidence >= 0.35f && streak >= 3))) {
+                                            triggered = true
+                                            mainExecutor.execute { onObjectDetected() }
+                                        }
+                                    } else {
+                                        streak = 0
                                     }
                                 })
                             }
@@ -300,7 +352,9 @@ fun CameraChallengeView(targetObject: String, onObjectDetected: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                 ) {
-                    if (match != null) {
+                    if (initError != null) {
+                        Text("AI Error: $initError", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    } else if (match != null) {
                         val isTarget = matchesTarget(match.label, targetObject)
                         val color = if (isTarget) Color(0xFF4CAF50) else Color.White
                         val pct = (match.confidence * 100).toInt()
@@ -311,7 +365,7 @@ fun CameraChallengeView(targetObject: String, onObjectDetected: () -> Unit) {
                             fontSize = 18.sp
                         )
                     } else {
-                        Text("YOLOv8 Scanning...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Point at object...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     }
                 }
             }
@@ -333,8 +387,7 @@ private fun processYoloFrame(
     detector: YoloV8Detector?,
     imageProxy: ImageProxy,
     targetObject: String,
-    onDetectionUpdate: (YoloDetection?) -> Unit,
-    onSuccess: () -> Unit
+    onDetectionUpdate: (YoloDetection?) -> Unit
 ) {
     try {
         if (detector == null) return
@@ -342,17 +395,11 @@ private fun processYoloFrame(
         val rot = imageProxy.imageInfo.rotationDegrees.toFloat()
         val bmp = if (rot != 0f) {
             val m = Matrix().apply { postRotate(rot) }
-            Bitmap.createBitmap(rawBmp, 0, 0, rawBmp.width, rawBmp.height, m, true)
+            Bitmap.createBitmap(rawBmp, 0, 0, rawBmp.width, rawBmp.height, m, false)
         } else {
             rawBmp
         }
-
-        val det = detector.detect(bmp)
-        onDetectionUpdate(det)
-
-        if (det != null && matchesTarget(det.label, targetObject) && det.confidence >= 0.55f) {
-            onSuccess()
-        }
+        onDetectionUpdate(detector.detect(bmp))
     } catch (_: Exception) {
     } finally {
         imageProxy.close()
